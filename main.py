@@ -9,6 +9,7 @@ from translate import Translator
 from dotenv import load_dotenv
 import os
 import asyncio
+import concurrent.futures
 
 # Set the source and target languages
 source_language = "en"
@@ -57,6 +58,11 @@ def get_latest_twitter_updates(rss_url, last_item_link):
         
     return latest_items
 
+def run_in_thread(func, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    executor = concurrent.futures.ThreadPoolExecutor()
+    return loop.run_in_executor(executor, lambda: func(*args, **kwargs))
+
 async def send_update_to_telegram(items):
     for item in items:
         author = item["author"]
@@ -81,12 +87,12 @@ async def send_update_to_telegram(items):
         images = soup.find_all('img', src=True)
         # 处理图片，单独发送
         for img in images:
-            await asyncio.to_thread(bot.send_photo, chat_id=target_chat_id, photo=img['src'])
+            await run_in_thread(bot.send_photo, chat_id=target_chat_id, photo=img['src'])
         # 处理视频，单独发送
         videos = soup.find_all('video', src=True)
         for video in videos:
             video_url = video.get("src")
-            await asyncio.to_thread(bot.send_video, chat_id=target_chat_id, video=video_url)
+            await run_in_thread(bot.send_video, chat_id=target_chat_id, video=video_url)
         
         pub_date_parsed = datetime.strptime(item["published"], "%a, %d %b %Y %H:%M:%S %Z")
         pub_date = pub_date_parsed.strftime("%Y-%m-%d %H:%M:%S")
@@ -100,7 +106,7 @@ async def send_update_to_telegram(items):
             f"链接: {link}"
         )
 
-        await asyncio.to_thread(bot.send_message, chat_id=target_chat_id, text=message)  # Do not use parse_mode="HTML"
+        await run_in_thread(bot.send_message, chat_id=target_chat_id, text=message)  # Do not use parse_mode="HTML"
 
 last_links = [None] * len(rss_list)
 interval = 10  # 以秒为单位，根据需要调整RSS检查的频率
